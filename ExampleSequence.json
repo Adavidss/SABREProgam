@@ -1,0 +1,15 @@
+{
+    "daq_channel": "Dev1/ao1",
+    "voltage_range": {
+        "min": -10.0,
+        "max": 10.0
+    },
+    "ramp_time": 5,
+    "steps": 100,
+    "initial_voltage": 0,
+    "ramp_sequences": [
+        {"start_voltage": 0, "end_voltage": 5, "duration": 5},
+        {"start_voltage": 5, "end_voltage": -5, "duration": 5}
+    ],
+    "final_voltage": 0
+}
