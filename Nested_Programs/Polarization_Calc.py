@@ -3,6 +3,7 @@ import statistics
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 import json
+import csv
 import os
 from pathlib import Path
 
@@ -1071,6 +1072,16 @@ class PolarizationApp(ttk.Frame):
         # Create notebook to hold tabs
         self.notebook = ttk.Notebook(container)
         self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        if embedded:
+            control_bar = ttk.Frame(container)
+            control_bar.pack(fill=tk.X, padx=5, pady=5)
+            ttk.Button(control_bar, text="Save Data Set", command=self._save_dataset_csv).pack(side=tk.LEFT)
+            self.dataset_var = tk.StringVar()
+            self.dataset_combo = ttk.Combobox(control_bar, textvariable=self.dataset_var, state="readonly", width=25)
+            self.dataset_combo.pack(side=tk.LEFT, padx=5)
+            self.dataset_combo.bind("<<ComboboxSelected>>", self._load_dataset_csv)
+            self._refresh_dataset_list()
         
         # Add double-click binding for tab detachment
         self.notebook.bind("<Double-Button-1>", self._on_tab_double_click)
@@ -1145,6 +1156,75 @@ class PolarizationApp(ttk.Frame):
         if current_tab:
             tab_id = self.notebook.index(current_tab)
             self.tabs[tab_id].save_dataset()
+
+    # --- Embedded CSV persistence helpers ---
+    def _save_dataset_csv(self):
+        """Prompt for a name and save constants to CSV."""
+        current_tab = self.notebook.select()
+        if not current_tab:
+            return
+        tab = self.tabs[self.notebook.index(current_tab)]
+        name = simpledialog.askstring("Save Data Set", "Enter file name:", parent=self)
+        if not name:
+            return
+        path = DATA_DIR / f"{name}.csv"
+        try:
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["# Polarization Calculator Dataset"])
+                writer.writerow(["# Constants"])
+                consts = [
+                    ("hbar", tab.hbar_var.get()),
+                    ("gamma", tab.gamma_var.get()),
+                    ("B0", tab.B0_var.get()),
+                    ("kB", tab.kB_var.get()),
+                    ("sa_ratio", tab.sa_ratio_var.get()),
+                    ("T", tab.T_var.get()),
+                    ("conc_ref", tab.conc_ref_var.get()),
+                    ("conc_free", tab.conc_free_var.get()),
+                    ("conc_bound", tab.conc_bound_var.get()),
+                    ("signal_ref", tab.signal_ref_var.get())
+                ]
+                writer.writerows(consts)
+            self._refresh_dataset_list()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save dataset: {e}", parent=self)
+
+    def _refresh_dataset_list(self):
+        if hasattr(self, 'dataset_combo'):
+            files = [p.name for p in DATA_DIR.glob('*.csv')]
+            self.dataset_combo['values'] = files
+
+    def _load_dataset_csv(self, event=None):
+        filename = self.dataset_var.get()
+        if not filename:
+            return
+        path = DATA_DIR / filename
+        if not path.exists():
+            return
+        tab = self.tabs[self.notebook.index(self.notebook.select())]
+        try:
+            with open(path, newline="") as f:
+                for row in csv.reader(f):
+                    if not row or row[0].startswith('#'):
+                        continue
+                    key, val = row[0], row[1]
+                    var_map = {
+                        'hbar': tab.hbar_var,
+                        'gamma': tab.gamma_var,
+                        'B0': tab.B0_var,
+                        'kB': tab.kB_var,
+                        'sa_ratio': tab.sa_ratio_var,
+                        'T': tab.T_var,
+                        'conc_ref': tab.conc_ref_var,
+                        'conc_free': tab.conc_free_var,
+                        'conc_bound': tab.conc_bound_var,
+                        'signal_ref': tab.signal_ref_var
+                    }
+                    if key in var_map:
+                        var_map[key].set(val)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load dataset: {e}", parent=self)
     
     def _export_png(self):
         """Export the current graph as a PNG file."""

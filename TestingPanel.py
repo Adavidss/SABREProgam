@@ -6,23 +6,44 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, simpledialog
-import winsound
+
+# Define presets directory path early for lightweight imports
+PRESETS_DIR = r"C:\Users\walsworthlab\Desktop\SABRE Program\config_files_SABRE\PolarizationMethods\Presets"
+try:
+    import winsound
+except Exception:  # Non-Windows environments
+    winsound = None
 from functools import partial
 
-import matplotlib.pyplot as plt
-import nidaqmx
-from nidaqmx.constants import AcquisitionType
-from nidaqmx.stream_writers import AnalogSingleChannelWriter
-import numpy as np
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+    plt = None
+try:
+    import nidaqmx
+    from nidaqmx.constants import AcquisitionType
+    from nidaqmx.stream_writers import AnalogSingleChannelWriter
+except Exception:
+    nidaqmx = None
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 # Set up path for nested programs
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Nested_Programs"))
 
 # Import utility modules
-from Nested_Programs.Utility_Functions import (
-    build_composite_waveform,
-    ensure_default_state_files
-)
+try:
+    from Nested_Programs.Utility_Functions import (
+        build_composite_waveform,
+        ensure_default_state_files
+    )
+except Exception:
+    def build_composite_waveform(*a, **kw):
+        return None
+    def ensure_default_state_files():
+        pass
 
 from Nested_Programs.Constants_Paths import (
     BASE_DIR,
@@ -31,21 +52,17 @@ from Nested_Programs.Constants_Paths import (
     DIO_CHANNELS,
     STATE_MAPPING
 )
-from Nested_Programs.TestPanels_AI_AO import AnalogInputPanel, AnalogOutputPanel
-from Nested_Programs.Virtual_Testing_Panel import VirtualTestingPanel
-from Nested_Programs.FullFlowSystem import FullFlowSystem
-from Nested_Programs.SLIC_Control import SLICSequenceControl
-from Nested_Programs.ScramController import ScramController
-from Nested_Programs.Polarization_Calc import PolarizationApp
+# Heavy modules imported lazily within methods
+# Modules below import heavy dependencies; load lazily in methods
 
 # Import custom classes
 from Nested_Programs.ToolTip import ToolTip
-from Nested_Programs.ParameterSection import ParameterSection
-from Nested_Programs.PresetManager import PresetManager
-from Nested_Programs.VisualAspects import VisualAspects
-
-# Define presets directory path
-PRESETS_DIR = r"C:\Users\walsworthlab\Desktop\SABRE Program\config_files_SABRE\PolarizationMethods\Presets"
+try:
+    from Nested_Programs.ParameterSection import ParameterSection
+    from Nested_Programs.PresetManager import PresetManager
+    from Nested_Programs.VisualAspects import VisualAspects
+except Exception:
+    ParameterSection = PresetManager = VisualAspects = object
 
 try:
     # Initialize state files
@@ -100,8 +117,10 @@ class SABREGUI(VisualAspects):
         
         # bind <Configure> to handle overflow
         self.bind("<Configure>", lambda e: self._update_tab_overflow())
-        # bind right-click for tear-off (not left-click)
+        # bind right-click for tear-off
         self.notebook.bind("<Button-3>", self._maybe_clone_tab, add="+")
+        # double left-click detaches the tab
+        self.notebook.bind("<Double-Button-1>", self._detach_tab_event, add="+")
         # ------------------------------------------------------------
         
         self.time_window = None  # Store the time window for plotting
@@ -201,8 +220,9 @@ class SABREGUI(VisualAspects):
         # Create Polarization Calculator tab
         print("Creating Polarization Calculator tab...")
         pol_frame = ttk.Frame(self.notebook)
-        self.notebook.add(pol_frame, text="Polarization Cal")
-        self._tabs["Polarization Cal"] = pol_frame
+        # Updated tab name
+        self.notebook.add(pol_frame, text="% Polarization Calc")
+        self._tabs["% Polarization Calc"] = pol_frame
         self._create_polarization_tab(pol_frame)
         print("Polarization Calculator tab created successfully")
         print("All tabs created successfully!")
@@ -224,7 +244,7 @@ class SABREGUI(VisualAspects):
         self._create_waveform_live_view_main(waveform_frame)
 
         # Method Selection and Experiment Controls section (top-right)
-        method_control_frame = ttk.LabelFrame(parent, text="Controls")
+        method_control_frame = ttk.LabelFrame(parent, text="Experimental Controls")
         method_control_frame.grid(row=0, column=1, sticky="nsew", padx=4, pady=4)
         self._create_method_and_control_section(method_control_frame)
         
@@ -252,7 +272,7 @@ class SABREGUI(VisualAspects):
         self._create_polarization_method_section(scrollable_frame)
         
         # Initialize parameter section in advanced tab
-        self.parameter_section = ParameterSection(self, scrollable_frame)
+        self.parameter_section = ParameterSection(self, scrollable_frame, tab_name="Advanced Parameters")
         
         # Create valve timing section
         self.parameter_section.create_valve_timing_section(scrollable_frame)
@@ -272,6 +292,7 @@ class SABREGUI(VisualAspects):
         
         # Embed the full VirtualTestingPanel directly
         try:
+            from Nested_Programs.Virtual_Testing_Panel import VirtualTestingPanel
             self.embedded_virtual_panel = VirtualTestingPanel(self, embedded=True, container=vt_frame)
             self.embedded_virtual_panel.pack(fill="both", expand=True)
         except Exception as e:
@@ -284,6 +305,7 @@ class SABREGUI(VisualAspects):
         testing_notebook.add(ff_frame, text="Full Flow System")
         
         try:
+            from Nested_Programs.FullFlowSystem import FullFlowSystem
             self.embedded_full_flow = FullFlowSystem(self, embedded=True)
             self.embedded_full_flow.pack(fill="both", expand=True, in_=ff_frame)
         except Exception as e:
@@ -294,17 +316,22 @@ class SABREGUI(VisualAspects):
         # Analog I/O panels
         ai_frame = ttk.Frame(testing_notebook)
         testing_notebook.add(ai_frame, text="Analog Input")
+        from Nested_Programs.TestPanels_AI_AO import AnalogInputPanel
+        from Nested_Programs.TestPanels_AI_AO import AnalogInputPanel
         ai_panel = AnalogInputPanel(ai_frame, embedded=True)
         ai_panel.pack(fill="both", expand=True)
         
         ao_frame = ttk.Frame(testing_notebook)
         testing_notebook.add(ao_frame, text="Analog Output")
+        from Nested_Programs.TestPanels_AI_AO import AnalogOutputPanel
+        from Nested_Programs.TestPanels_AI_AO import AnalogOutputPanel
         ao_panel = AnalogOutputPanel(ao_frame, embedded=True)
         ao_panel.pack(fill="both", expand=True)
     
     def _create_slic_tab(self, parent):
         """Create the SLIC control tab"""
         try:
+            from Nested_Programs.SLIC_Control import SLICSequenceControl
             slic_panel = SLICSequenceControl(parent, embedded=True)
             slic_panel.pack(fill="both", expand=True)
         except Exception as e:
@@ -315,6 +342,7 @@ class SABREGUI(VisualAspects):
     def _create_polarization_tab(self, parent):
         """Create the polarization calculator tab"""
         try:
+            from Nested_Programs.Polarization_Calc import PolarizationApp
             pol_panel = PolarizationApp(parent, embedded=True)
             pol_panel.pack(fill="both", expand=True)
         except Exception as e:
@@ -334,8 +362,8 @@ class SABREGUI(VisualAspects):
 
         # Add title and toggle button side by side
         tk.Label(header_frame, text="Live Waveform", font=("Arial", 10, "bold")).pack(side="left")
-        toggle_btn = ttk.Button(header_frame, text="Hide", command=self.toggle_waveform_plot)
-        toggle_btn.pack(side="right", padx=2)
+        refresh_btn = ttk.Button(header_frame, text="Refresh", command=self.refresh_main_waveform_plot)
+        refresh_btn.pack(side="right", padx=2)
 
         # Create the plot container frame
         plot_container = tk.Frame(waveform_container, bg="black", height=120)
@@ -377,6 +405,24 @@ class SABREGUI(VisualAspects):
                                     text="Waveform Display\n(Matplotlib required)", 
                                     fg="lime", bg="black", font=("Arial", 9))
             fallback_label.pack(expand=True)
+
+    def refresh_main_waveform_plot(self):
+        """Re-plot the current waveform buffer on the small preview."""
+        try:
+            if not hasattr(self, 'main_ax') or not hasattr(self, 'main_canvas'):
+                return
+            if hasattr(self, 'current_waveform_buffer') and hasattr(self, 'current_waveform_rate'):
+                buf = self.current_waveform_buffer
+                sr = self.current_waveform_rate
+                t_axis = np.arange(len(buf)) / sr
+                self.main_ax.clear()
+                self.main_ax.plot(t_axis, buf, color='lime', linewidth=1)
+                self.main_ax.set_xlabel('Time (s)', color='lime', fontsize=8)
+                self.main_ax.set_ylabel('Voltage (V)', color='lime', fontsize=8)
+                self.main_ax.grid(True, color='darkgreen', alpha=0.3)
+                self.main_canvas.draw()
+        except Exception as e:
+            print(f"Error refreshing main waveform plot: {e}")
 
     def _create_magnetic_field_live_view_main(self, parent):
         """Create the magnetic field live view for the Main tab"""
@@ -440,7 +486,7 @@ class SABREGUI(VisualAspects):
     def _create_method_and_control_section(self, parent):
         """Create merged method selection and experiment controls section"""
         # Preset Selection at top (replaces old method selection)
-        preset_frame = ttk.LabelFrame(parent, text="Method Preset")
+        preset_frame = ttk.Frame(parent)
         preset_frame.pack(fill="x", padx=4, pady=4)
         
         # Preset selection label and dropdown
@@ -490,7 +536,7 @@ class SABREGUI(VisualAspects):
         self.timer_label.pack(side="left", padx=(5, 0))
         
         # Main experiment controls - Quadrant layout (2x2 grid)
-        controls_frame = ttk.LabelFrame(parent, text="Control Buttons")
+        controls_frame = ttk.Frame(parent)
         controls_frame.pack(fill="both", expand=True, padx=4, pady=4)
         
         # Configure grid for quadrant layout
@@ -508,9 +554,10 @@ class SABREGUI(VisualAspects):
     
     def _create_quadrant_button(self, parent, text, color, command, row, col):
         """Create a quadrant experiment control button with consistent styling"""
-        button = tk.Button(parent, text=text, 
+        button = tk.Button(parent, text=text,
                           command=command,
-                          font=('Arial', 11, 'bold'),
+                          font=('Arial', 10, 'bold'),
+                          width=8, height=1,
                           relief="raised", bd=3)
         
         # Set color scheme based on button type
@@ -528,10 +575,10 @@ class SABREGUI(VisualAspects):
     
     def _create_discrete_button(self, parent, text, color, command):
         """Create a discrete experiment control button with consistent styling"""
-        button = tk.Button(parent, text=text, 
+        button = tk.Button(parent, text=text,
                           command=command,
-                          font=('Arial', 10, 'bold'),
-                          width=12, height=2,
+                          font=('Arial', 9, 'bold'),
+                          width=8, height=1,
                           relief="raised", bd=2)
         
         # Set color scheme based on button type
@@ -610,15 +657,18 @@ class SABREGUI(VisualAspects):
     
     def open_ai_panel(self):
         """Launch the miniature AI test panel."""
+        from Nested_Programs.TestPanels_AI_AO import AnalogInputPanel
         AnalogInputPanel(self, embedded=False)
 
     def open_ao_panel(self):
         """Launch the miniature AO test panel."""
+        from Nested_Programs.TestPanels_AI_AO import AnalogOutputPanel
         AnalogOutputPanel(self, embedded=False)
 
     def open_slic_control(self):
         """Open SLIC control window"""
         try:
+            from Nested_Programs.SLIC_Control import SLICSequenceControl
             SLICSequenceControl(self, embedded=False)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open SLIC Control: {e}")
@@ -626,6 +676,7 @@ class SABREGUI(VisualAspects):
     def open_polarization_calculator(self):
         """Open polarization calculator window"""
         try:
+            from Nested_Programs.Polarization_Calc import PolarizationApp
             PolarizationApp(self, embedded=False)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open Polarization Calculator: {e}")
@@ -658,6 +709,7 @@ class SABREGUI(VisualAspects):
         else:
             # Initialize virtual panel for visualization only (optional)
             if self.virtual_panel is None or not self.virtual_panel.winfo_exists():
+                from Nested_Programs.Virtual_Testing_Panel import VirtualTestingPanel
                 self.virtual_panel = VirtualTestingPanel(self)
             
             # Set up and start the activation sequence directly in the main app
@@ -775,6 +827,7 @@ class SABREGUI(VisualAspects):
 
         # Initialize virtual panel for visualization only (optional)
         if self.virtual_panel is None or not self.virtual_panel.winfo_exists():
+            from Nested_Programs.Virtual_Testing_Panel import VirtualTestingPanel
             self.virtual_panel = VirtualTestingPanel(self)
 
         # Start the bubbling sequence in a separate thread
@@ -1034,7 +1087,8 @@ class SABREGUI(VisualAspects):
             self._reset_run_state()
             
             # Sound alert
-            winsound.Beep(2000, 1000)
+            if winsound:
+                winsound.Beep(2000, 1000)
             
             # Update status
             if hasattr(self, 'status_var'):
@@ -1198,6 +1252,9 @@ class SABREGUI(VisualAspects):
         """Plot waveform buffer for preview"""
         try:
             if hasattr(self, 'ax') and hasattr(self, 'canvas'):
+                # Store for refresh in main preview
+                self.current_waveform_buffer = buf
+                self.current_waveform_rate = sr
                 self.ax.clear()
                 time_axis = np.arange(len(buf)) / sr
                 self.ax.plot(time_axis, buf, 'b-', linewidth=1)
@@ -1304,6 +1361,17 @@ class SABREGUI(VisualAspects):
             context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             context_menu.grab_release()
+
+    def _detach_tab_event(self, event):
+        """Handle double-left-click on a tab label to detach it."""
+        elem = self.notebook.identify(event.x, event.y)
+        if elem != "label":
+            return
+
+        index = self.notebook.index("@%d,%d" % (event.x, event.y))
+        tab_text = self.notebook.tab(index, "text")
+
+        self._clone_tab(tab_text)
 
     def _clone_tab(self, tab_text):
         """Create a detached window with synchronized content for Main or Advanced Parameters tabs."""
@@ -1415,6 +1483,7 @@ class SABREGUI(VisualAspects):
         # Create and embed Virtual Testing environment directly
         vt_frame = ttk.Frame(testing_notebook)
         testing_notebook.add(vt_frame, text="Virtual Testing")
+        from Nested_Programs.Virtual_Testing_Panel import VirtualTestingPanel
         vt_panel = VirtualTestingPanel(self, embedded=True, container=vt_frame)
         vt_panel.pack(fill="both", expand=True)
         
@@ -1583,6 +1652,7 @@ class SABREGUI(VisualAspects):
                 self.full_flow_window.geometry("800x600")
                 
                 # Create the FullFlowSystem instance in the new window
+                from Nested_Programs.FullFlowSystem import FullFlowSystem
                 full_flow_app = FullFlowSystem(self.full_flow_window)
                 full_flow_app.pack(fill="both", expand=True)
                 
@@ -1602,6 +1672,7 @@ class SABREGUI(VisualAspects):
     def toggle_virtual_panel(self):
         """Toggle the Virtual Testing Environment window"""
         if self.virtual_panel is None or not self.virtual_panel.winfo_exists():
+            from Nested_Programs.Virtual_Testing_Panel import VirtualTestingPanel
             self.virtual_panel = VirtualTestingPanel(self, embedded=False)
         else:
             if hasattr(self.virtual_panel, 'toplevel') and self.virtual_panel.toplevel:
@@ -1795,11 +1866,12 @@ class SABREGUI(VisualAspects):
                                                         command=self._on_tooltip_toggle)
         self.tooltips_enabled_checkbox.pack(side="left")
         
-        # Store references for easy access
+        # Store references for easy access (not currently used)
         self.polarization_widgets = {
             'method_combobox': self.polarization_method_combobox,
             'audio_checkbox': self.audio_enabled_checkbox,
-            'tooltip_checkbox': self.tooltips_enabled_checkbox        }
+            'tooltip_checkbox': self.tooltips_enabled_checkbox
+        }
 
     def _load_polarization_methods_from_directory(self):
         """Load all JSON polarization method files from the specified directory"""

@@ -2,12 +2,20 @@ import tkinter as tk  # Ensure tkinter is imported for the tooltip functionality
 
 # ==== STANDALONE TOOLTIP CLASS ==============================
 class ToolTip:
-    """Custom tooltip implementation for tkinter widgets"""
-    def __init__(self, widget, text, parent=None):
+    """Custom tooltip implementation for tkinter widgets with multi-tab support"""
+
+    # Registry to keep track of tooltips by tab
+    _registry = {}
+
+    def __init__(self, widget, text, parent=None, tab_name=None):
         self.widget = widget
         self.text = text
         self.tooltip_window = None
         self.parent = parent  # Reference to main window for tooltip toggle check
+        self.tab_name = tab_name
+
+        if tab_name:
+            ToolTip._registry.setdefault(tab_name, []).append(self)
         self.widget.bind("<Enter>", self.on_enter)
         self.widget.bind("<Leave>", self.on_leave)
         self.widget.bind("<Motion>", self.on_motion)
@@ -52,3 +60,14 @@ class ToolTip:
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
+
+    @classmethod
+    def register_widget_tooltip(cls, widget, text, parent=None, tab_name=None):
+        """Convenience method to create and register a tooltip."""
+        return cls(widget, text, parent=parent, tab_name=tab_name)
+
+    @classmethod
+    def cleanup(cls):
+        """Remove tooltips for widgets that no longer exist."""
+        for tab, tips in list(cls._registry.items()):
+            cls._registry[tab] = [t for t in tips if t.widget.winfo_exists()]

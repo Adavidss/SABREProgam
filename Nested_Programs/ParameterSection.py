@@ -8,9 +8,10 @@ from Nested_Programs.Utility_Functions import get_value  # Ensure correct import
 class ParameterSection:
     """Manages all parameter input fields, tooltips, and value conversion."""
 
-    def __init__(self, parent, master_frame):
+    def __init__(self, parent, master_frame, tab_name=None):
         self.parent = parent              # Parent SABREGUI instance
         self.master_frame = master_frame  # Frame where parameters are placed
+        self.tab_name = tab_name
         self.entries = {}                 # {label : tk.Entry}
         self.units = {}                   # {label : tk.StringVar}
 
@@ -62,9 +63,9 @@ class ParameterSection:
 
         # Tooltips on both label and entry
         tooltip = self._get_tooltip_text(label_text)
-        ToolTip(entry, tooltip, parent=self.parent)
-        ToolTip(frame.children[list(frame.children)[0]],  # the label widget
-                tooltip, parent=self.parent)
+        ToolTip.register_widget_tooltip(entry, tooltip, parent=self.parent, tab_name=self.tab_name)
+        ToolTip.register_widget_tooltip(frame.children[list(frame.children)[0]],
+                                        tooltip, parent=self.parent, tab_name=self.tab_name)
 
         # Store references
         setattr(self.parent, entry_attr, entry)
